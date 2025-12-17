@@ -2,28 +2,39 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStream
 from threading import Thread
 import torch
 
-quantization_config = BitsAndBytesConfig(
-    # load_in_8bit=True,
-    # 如果你想用 4-bit (更省显存)，把上面改成 False，下面改成 True
-    load_in_4bit=True, 
-    # bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-)
-
-# 模型路径
-model_name = "./Llama-3.2-3B-Instruct-abliterated" 
-
 dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
-# 加载模型
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    quantization_config=quantization_config,
-    device_map="auto",
-    tie_word_embeddings=False 
+quantization_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=dtype, # 显式设置计算精度，提升推理速度
+    bnb_4bit_quant_type="nf4",            # 使用更先进的量化类型
+    bnb_4bit_use_double_quant=True        # 二次量化，进一步节省显存
 )
 
+model = None
+tokenizer = None
+pipe_check = True
+
 def feifeillama(prompt):
+    
+    global model, tokenizer, pipe_check
+    
+    if pipe_check:
+        print("--- 正在加载模型，请稍候... (此消息只应出现一次) ---")
+        model_name = "./QiMing-Polaris-Llama-3.2-3B-Instruct-abliterated_merged"
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            quantization_config=quantization_config,
+            device_map="auto",
+            tie_word_embeddings=False,
+            torch_dtype=dtype,
+        )
+        # --- 修改全局变量的值 ---
+        pipe_check = False
+        print("--- 模型加载完成。---")
+    
     """
     流式生成函数 v2.0 (纯摄影版)
     针对 Flux.1 优化，专门修复"胡乱堆砌渲染引擎参数"和"逻辑错误"的问题。
@@ -41,7 +52,7 @@ def feifeillama(prompt):
         "4. BANNED WORDS (DO NOT USE): 'Zbrush', 'Maya', 'Arnold', 'Cinema 4D', 'Blender', 'rendering', 'scent', 'smell', 'perfume', 'HKS system'.\n"
         "5. KEEP IT CLEAN: Do not invent shops selling random items unless specified.\n"
         
-        "Structure: [Main Subject Description]. [Environment & Atmosphere]. [Camera & Lighting Keywords]."
+        "Structure: [Main Subject Description]. [Environment & Atmosphere]."
     )
 
     # --- 2. Few-Shot Examples (纯摄影风格，无 3D 术语) ---
@@ -79,8 +90,8 @@ def feifeillama(prompt):
         max_new_tokens=200,        
         do_sample=True,
         temperature=0.3,           # 保持低温，稳定输出
-        top_p=0.9,
-        # [核心] 重复惩罚稍微提高到 1.25，抑制它像念经一样列参数
+        top_p=0.92,
+        # [核心] 重复惩罚稍微提高到 1.2，抑制它像念经一样列参数
         repetition_penalty=1.25,   
         eos_token_id=tokenizer.eos_token_id
     )

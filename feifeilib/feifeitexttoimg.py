@@ -11,7 +11,8 @@ import json
 import os
 import torch
 
-pipe = feifeimodload()
+pipe_check = True
+pipe = None
 MAX_SEED = np.iinfo(np.int32).max
 # --- 新增：配置缓存目录 ---
 IMAGE_CACHE_DIR = "image_cache"
@@ -118,6 +119,10 @@ def feifeitexttoimg(
     quality_select=False,
     progress=gr.Progress(track_tqdm=True),
 ):
+    global pipe_check, pipe
+    if pipe_check:
+        pipe = feifeimodload()
+        pipe_check = False
     BATCH_SIZE = pic_num
     # x_prompt = to_x_prompt(prompt)
     # x_prompt = ""
@@ -144,6 +149,7 @@ def feifeitexttoimg(
         ]
 
         pipe.set_adapters(adapters, adapter_weights=weights)
+        
     if styles_prompt == ["CLIP"]:
         output = pipe(
             prompt=prompt,
